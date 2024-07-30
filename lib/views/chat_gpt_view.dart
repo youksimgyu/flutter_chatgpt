@@ -7,16 +7,57 @@ class ChatGPTView extends StatefulWidget {
   State<ChatGPTView> createState() => _ChatGPTViewState();
 }
 
-class _ChatGPTViewState extends State<ChatGPTView> {
+class _ChatGPTViewState extends State<ChatGPTView> with TickerProviderStateMixin {
   TextEditingController messageController = TextEditingController();
 
   static const String _kStrings = 'Flutter ChatGPT';
   String get _currentString => _kStrings;
 
+  ScrollController scrollController = ScrollController();
+  late Animation<int> _characterCount;
+  late AnimationController animationController;
+
+  @override
+  void initState() {
+    super.initState();
+    setUpAnimation();
+  }
+
   @override
   void dispose() {
     messageController.dispose();
+    scrollController.dispose();
     super.dispose();
+  }
+
+  void setUpAnimation() {
+    animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2500),
+    );
+    _characterCount = StepTween(begin: 0, end: _currentString.length)
+        .animate(CurvedAnimation(
+      parent: animationController,
+      curve: Curves.easeIn,
+    ));
+    animationController.addListener(() {
+      setState(() {});
+    });
+    animationController.addStatusListener((status) {
+      if(status == AnimationStatus.completed) {
+        Future.delayed(const Duration(seconds: 1)).then((value) {
+          animationController.reverse();
+        });
+      } else {
+        if(status == AnimationStatus.dismissed) {
+          Future.delayed(const Duration(seconds: 1)).then((value) {
+            animationController.forward();
+          });
+        }
+      }
+    });
+
+    animationController.forward();
   }
 
   @override
@@ -55,11 +96,58 @@ class _ChatGPTViewState extends State<ChatGPTView> {
                 ),
               ),
               Expanded(
-                child: Container(
-                  color: Colors.blue,
-                  child: const Center(
-                    child: Text(_kStrings),
-                  ),
+                child: AnimatedBuilder(
+                  animation: _characterCount,
+                  builder: (context, child) {
+                    String text = _currentString.substring(0, _characterCount.value);
+                    return Row(
+                      children: [
+                        Text('${text}'),
+                      ],
+                    );
+                    return ListView.builder(
+                        itemCount: 100,
+                        itemBuilder: (context, index) {
+                          if(index % 2 == 0) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text('User'),
+                                        Text('message'),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }
+                          return const Row(
+                            children: [
+                              CircleAvatar(
+                                backgroundColor: Colors.teal,
+                              ),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('ChatGPT'),
+                                    Text('OpenAI Message'),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                    );
+                  }
                 ),
               ),
               Dismissible(
@@ -87,17 +175,14 @@ class _ChatGPTViewState extends State<ChatGPTView> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         decoration: BoxDecoration(
-                          color: Colors.grey[200],
                           borderRadius: BorderRadius.circular(32),
-                          border: Border.all(
-                            color: Colors.grey[300]!,
-                          ),
+                          border: Border.all(),
                         ),
                         child: TextField(
                           controller: messageController,
                           decoration: const InputDecoration(
                             border: InputBorder.none,
-                            hintText: 'Type a message...',
+                            hintText: 'Message',
                           ),
                         ),
                       ),
@@ -106,8 +191,8 @@ class _ChatGPTViewState extends State<ChatGPTView> {
                       onPressed: () {
 
                       },
-                      iconSize: 42,
-                      icon: const Icon(Icons.arrow_circle_up),
+                      iconSize: 30,
+                      icon: const Icon(Icons.send),
                     ),
                   ],
                 ),
