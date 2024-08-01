@@ -39,6 +39,14 @@ class _ChatGPTViewState extends State<ChatGPTView> with TickerProviderStateMixin
     super.dispose();
   }
 
+  void _scrollDown() {
+    scrollController.animateTo(
+      scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.fastOutSlowIn,
+    );
+  }
+
   void setUpAnimation() {
     animationController = AnimationController(
       vsync: this,
@@ -90,13 +98,41 @@ class _ChatGPTViewState extends State<ChatGPTView> with TickerProviderStateMixin
     );
     print(response.body);
     if(response.statusCode == 200) {
-      final Map<String, dynamic> data = json.decode(response.body);
-      final ChatCompletionModel completionModel = ChatCompletionModel.fromJson(data);
-      _historyList.addAll(completionModel.messages!);
+      final jsonData = jsonDecode(utf8.decode(response.bodyBytes));
+      String role = jsonData['choices'][0]['message']['role'];
+      String content = jsonData['choices'][0]['message']['content'];
+      _historyList.last = _historyList.last.copyWith(
+        role: role,
+        content: content,
+      );
       setState(() {
-        streamText = completionModel.messages!.last.content!;
+        _scrollDown();
       });
     }
+  }
+
+  void clearChat() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('새로운 대화의 시작'),
+          content: const Text('신규 대화를 생성하시겠어요?'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                setState(() {
+                  messageController.clear();
+                  _historyList.clear();
+                });
+              },
+              child: const Text('네'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -116,17 +152,18 @@ class _ChatGPTViewState extends State<ChatGPTView> with TickerProviderStateMixin
                       return [
                         const PopupMenuItem(
                           child: ListTile(
-                            title: Text('history'),
+                            title: Text('히스토리'),
                           ),
                         ),
                         const PopupMenuItem(
                           child: ListTile(
-                            title: Text('settings'),
+                            title: Text('설정'),
                           ),
                         ),
-                        const PopupMenuItem(
-                          child: ListTile(
-                            title: Text('new chat'),
+                        PopupMenuItem(
+                          onTap: () => clearChat(),
+                          child: const ListTile(
+                            title: Text('새로운 채팅'),
                           ),
                         ),
                       ];
@@ -137,7 +174,7 @@ class _ChatGPTViewState extends State<ChatGPTView> with TickerProviderStateMixin
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Center(
+                  child: _historyList.isEmpty ? Center(
                     child: AnimatedBuilder(
                       animation: _characterCount,
                       builder: (context, child) {
@@ -156,50 +193,52 @@ class _ChatGPTViewState extends State<ChatGPTView> with TickerProviderStateMixin
                             ),
                           ],
                         );
-                        return ListView.builder(
-                            itemCount: 100,
-                            itemBuilder: (context, index) {
-                              if(index % 2 == 0) {
-                                return const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 16),
-                                  child: Row(
-                                    children: [
-                                      CircleAvatar(),
-                                      SizedBox(width: 8),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text('User'),
-                                            Text('message'),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }
-                              return const Row(
-                                children: [
-                                  CircleAvatar(
-                                    backgroundColor: Colors.teal,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('ChatGPT'),
-                                        Text('OpenAI Message'),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                        );
                       }
                     ),
+                  ) : GestureDetector(
+                    onTap: () => FocusScope.of(context).unfocus(),
+                    child: ListView.builder(
+                    itemCount: _historyList.length,
+                    itemBuilder: (context, index) {
+                      if(_historyList[index].role == 'user') {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Row(
+                            children: [
+                              const CircleAvatar(),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text('User'),
+                                    Text(_historyList[index].content ?? ''),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                      return Row(
+                        children: [
+                          const CircleAvatar(
+                            backgroundColor: Colors.teal,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('ChatGPT'),
+                                Text(_historyList[index].content ?? ''),
+                              ],
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                                    ),
                   ),
                 ),
               ),
@@ -219,7 +258,8 @@ class _ChatGPTViewState extends State<ChatGPTView> with TickerProviderStateMixin
                 ),
                 confirmDismiss: (direction) async {
                   if(direction == DismissDirection.startToEnd) {
-                    // logic
+                    if(_historyList.isNotEmpty) return;
+                    clearChat();
                   }
                 },
                 child: Row(
@@ -243,6 +283,10 @@ class _ChatGPTViewState extends State<ChatGPTView> with TickerProviderStateMixin
                     IconButton(
                       onPressed: () async {
                         if(messageController.text.isEmpty) return;
+                        setState(() {
+                          _historyList.add(Message(role: 'user', content: messageController.text.trim()));
+                          _historyList.add(const Message(role: 'assistant', content: ''));
+                        });
                         try {
                           await requestChat(messageController.text.trim());
                           messageController.clear();
