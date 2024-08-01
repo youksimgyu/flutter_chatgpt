@@ -41,6 +41,7 @@ class _ChatGPTViewState extends State<ChatGPTView>
   }
 
   void _scrollDown() {
+    if (!scrollController.hasClients) return;
     scrollController.animateTo(
       scrollController.position.maxScrollExtent,
       duration: const Duration(milliseconds: 300),
@@ -185,7 +186,7 @@ class _ChatGPTViewState extends State<ChatGPTView>
                                 return Row(
                                   children: [
                                     Text(
-                                      '${text}',
+                                      text,
                                       style: const TextStyle(
                                         fontSize: 24,
                                         fontWeight: FontWeight.bold,
@@ -290,16 +291,16 @@ class _ChatGPTViewState extends State<ChatGPTView>
                     IconButton(
                       onPressed: () async {
                         if (messageController.text.isEmpty) return;
+                        final text = messageController.text.trim();
+                        messageController.clear();
                         setState(() {
-                          _historyList.add(Message(
-                              role: 'user',
-                              content: messageController.text.trim()));
+                          _historyList
+                              .add(Message(role: 'user', content: text));
                           _historyList.add(
                               const Message(role: 'assistant', content: ''));
                         });
                         try {
-                          await requestChat(messageController.text.trim());
-                          messageController.clear();
+                          await requestChat(text);
                           streamText = '';
                         } catch (e) {
                           print('Error: ${e.toString()}');
